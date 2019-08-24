@@ -1,0 +1,247 @@
+---
+title: "RNAseq_edgeR_tet2"
+author: "Vinothkumar Rajan"
+date: '2019-04-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(edgeR)
+library(HTSFilter)
+library(org.Dr.eg.db)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(clusterProfiler)
+library(tidyverse)
+library('biomaRt')
+library(ReactomePA)
+library(ggsci)
+library(TFEA.ChIP)
+library(plotly)
+library(tidyr)
+library(viridis)
+library(plyr)
+library(ggthemes)
+```
+
+```{r initialize}
+setwd("/Volumes/Career/Lab/RNAseq data/Adult")
+C1<-read.table("C1.counts.txt", header= TRUE)
+C2<-read.table("C2.counts.txt", header= TRUE)
+C3<-read.table("C3.counts.txt", header= TRUE)
+T1<-read.table("T1.counts.txt", header= TRUE)
+T2<-read.table("T2.counts.txt", header= TRUE)
+T3<-read.table("T3.counts.txt", header= TRUE)
+C1<-C1 %>% dplyr::select(1, 7)
+C2<-C2 %>% dplyr::select(1, 7)
+C3<-C3 %>% dplyr::select(1, 7)
+T1<-T1 %>% dplyr::select(1, 7)
+T2<-T2 %>% dplyr::select(1, 7)
+T3<-T3 %>% dplyr::select(1, 7)
+counts <- merge(C1,C2, by="Geneid")
+counts <- merge(counts, C3, by="Geneid")
+counts <- merge(counts,T1, by="Geneid")
+counts <- merge(counts,T2, by="Geneid")
+counts <- merge(counts,T3, by="Geneid")
+count_data<-counts[-1]
+row.names(count_data) <- counts$Geneid
+head(count_data)
+```
+```{r MDS, echo=TRUE}
+rawCountTable<-data.matrix(count_data, rownames.force = "automatic")
+sampleInfo <- read.table("design.csv", header=TRUE, sep=",", row.names=1)
+dgeFull <- DGEList(rawCountTable, group=sampleInfo$Condition)
+plotMDS(dgeFull, col=rep(1:2, each=3))
+pseudoCounts <- log2(dgeFull$counts+1)
+boxplot(pseudoCounts, col="gray", xlab="", ylab="Log2 counts per million", las=3)
+plotMDS(pseudoCounts)
+
+dgeFull <- estimateCommonDisp(dgeFull)
+dgeFull <- estimateTagwiseDisp(dgeFull)
+dgeFull$samples$group <- relevel(dgeFull$samples$group, ref="WT")
+dgeFull
+dgeTest <- exactTest(dgeFull)
+filtData <- HTSFilter(dgeFull)$filteredData
+
+dgeTestFilt <- exactTest(filtData)
+resFilt <- topTags(dgeTestFilt, n=nrow(dgeTest$table))
+sigReg <- resFilt$table[resFilt$table$FDR<0.05,]
+diffexp<-as.data.frame(resFilt)
+mutateddf <- mutate(diffexp, sig=ifelse(diffexp$FDR<0.05, "Sig", ifelse(diffexp$PValue<0.01 & (diffexp$logFC>1 | diffexp$logFC<(-1)), "sig pval", "Not Sig")))
+input <- cbind(gene=rownames(resFilt), mutateddf ) 
+colnames(input)[1] <- "ENSEMBL"
+ids <- bitr(input$ENSEMBL, fromType="ENSEMBL", toType="SYMBOL", OrgDb="org.Dr.eg.db", drop = FALSE)
+input<-merge(input, ids, by="ENSEMBL")
+``
+```{r plotable table}
+write.csv(input, "total expression.csv")
+head(input)
+```
+
+```{r volcano plot}
+input_fg<-subset(input, sig == "Sig")
+volc = ggplot(input, aes(logFC, -log10(PValue))) + geom_point(color = "grey", alpha = 0.1)+ geom_point(data=input_fg, aes(col= sig, alpha = 0.4))  + ggtitle("Volcano plot (tet2 mutant vs tet2 wild-type)") + theme_bw() +theme(axis.title.x = element_text(size=14),axis.title.y = element_text(size=14), legend.position="none")+xlab("log fold Change (mutant vs wild-type)")+ ylab("-log10 p value")+scale_y_sqrt(limits = c(0, 40))
+
+volc+geom_text_repel(data=head(input_fg, 20), aes(label=SYMBOL), size = 4, box.padding = unit(0.35, "lines"),point.padding = unit(0.3, "lines"))+scale_color_aaas()
+```
+
+```{r heatmap}
+heatdf<-dgeFull$pseudo.counts
+ENSEMBL <- rownames(heatdf)
+headdf <- cbind(ENSEMBL,heatdf)
+headdf<-as.data.frame(headdf)
+df_data<-read.csv("sig_fdr.csv")
+df_data<-subset(df_data, Process != "")
+df<-merge(headdf, df_data, by="ENSEMBL")
+hm_plot<-df[,c(2,3,4,5,6,7,14,15)]
+hm_plot<-hm_plot[,c(8,7,1,2,3,4,5,6)]
+heat_plot<-gather(hm_plot, Genotype, Expression, -SYMBOL, -Process)
+heat_plot$Expression<-as.numeric(heat_plot$Expression)
+heat_plot <- ddply(heat_plot, .(SYMBOL), transform, Expression = scale(Expression))
+
+heat_plot$SYMBOL <- factor(heat_plot$SYMBOL, c("rnd3b","irgq1","irgq2","rnd1a", "shha","ba1l","hoxa10b", "hoxa13a","mpeg1.3", "mhc1lea","mhc1uba","mhc2dab","slc22a5","slc22a7a","slc24a4b","slc34a1a","slc4a5","slc5a12","slc5a2","slc6a19a.2","slc7a9","ftr73","ftr80","trim35-21","trim35-22","trim35-25", "ftr88"))
+
+p<-ggplot(heat_plot, aes(y=SYMBOL, x= reorder(Genotype,-Expression))) + geom_tile(aes(fill = Expression), size=0.25)+ scale_fill_viridis(option="D",values = NULL, space = "Lab", na.value = "white", guide = "colourbar", aesthetics = "fill") + theme_tufte(base_family="Helvetica")+ theme(plot.background=element_blank(),panel.border=element_rect(fill=NA, color = "black", size=0.5, linetype="solid"), axis.text.x = element_text(angle = 90, hjust = 1, size=8)) + labs(fill = "Normalized Expression", x="",y="")+ coord_equal()+theme(axis.ticks=element_blank())+theme(legend.title=element_text(size=8))+ theme(legend.text=element_text(size=8))+theme(legend.position="right")
+
+plot(p)
+```
+
+```{r manipulating data into inputable format}
+reg<-subset(input, sig != "Not Sig")
+ids<- bitr(reg$ENSEMBL, fromType="ENSEMBL", toType="ENTREZID", OrgDb="org.Dr.eg.db", drop = FALSE)
+df <- merge(ids, reg, by="ENSEMBL")
+df_down<-subset(df, logFC<0)
+df_down<-df_down[,2:3]
+df_down<-na.omit(df_down)
+geneList = df_down[,2]
+names(geneList) = as.character(df_down[,1])
+geneList = sort(geneList, decreasing = TRUE)
+
+df_up<-subset(df, logFC>0)
+df_up<-df_up[,2:3]
+df_up<-na.omit(df_up)
+geneList_up = df_up[,2]
+names(geneList_up) = as.character(df_up[,1])
+geneList_up = sort(geneList_up, decreasing = TRUE)
+
+de_down<-df_down$ENTREZID
+de_up<-df_up$ENTREZID
+```
+
+
+
+```{r pathway analysis}
+pathway_down <- enrichPathway(gene=de_down,organism= "zebrafish", pvalueCutoff=0.05, readable=T)
+pd<-dotplot(pathway_down, showCategory=20, title =" Pathway Enrichment - Downregulated Genes")
+pd
+enrich_down<-pathway_down@result
+pathway_up <- enrichPathway(gene=de_up,organism= "zebrafish", pvalueCutoff=0.05, readable=T)
+pup<-dotplot(pathway_up, showCategory=15, title =" Pathway Enrichment - Upregulated Genes")
+pup
+emapplot(pathway_up)
+enrich_up<-pathway_up@result
+```
+
+
+```{r GO enrich}
+ego_up <- enrichGO(gene          = de_up,
+                 OrgDb         = org.Dr.eg.db,
+                 ont           = "CC",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.05,
+                qvalueCutoff  = 0.05, readable = TRUE)
+
+ego_down <- enrichGO(gene          = de_down,
+                 OrgDb         = org.Dr.eg.db,
+                 ont           = "CC",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.05,
+                qvalueCutoff  = 0.05, readable = TRUE)
+
+cnetplot(ego_down, categorySize="pvalue", foldChange = geneList, title =" GO Enrichment - Downregulated Genes")
+```
+
+
+
+```{r kegg}
+upreg_kegg <- enrichKEGG(gene         = de_up,
+                  organism     = 'dre',
+                  pvalueCutoff = 0.05)
+head(upreg_kegg)
+
+#No upregulated pathway was enriched
+
+downreg_kegg <- enrichKEGG(gene         = de_down,
+                 organism     = 'dre',
+                  pvalueCutoff = 0.05)
+
+dotplot(downreg_kegg, showCategory=15, title = "Kegg Enrichment -Downregulated Genes")
+```
+
+
+```{r tf analysis}
+ids_tf<- bitr(input$ENSEMBL, fromType="ENSEMBL", toType="ENTREZID", OrgDb="org.Dr.eg.db", drop = FALSE)
+tf_df <- merge(ids_tf,input, by="ENSEMBL")
+tf_df<-tf_df[,c(1,2,3,5)]
+
+#using BiomaRt to transform zebrafish gene id to human orthalogues to comapare with human CHIP data
+ensembl <- useMart("ensembl")
+human = useDataset("hsapiens_gene_ensembl", mart=ensembl)
+zebrafish <- useDataset("drerio_gene_ensembl", useMart("ensembl"))
+martdf<-tf_df[,1]
+martdf<-as.vector(martdf)
+
+ortho_df<-getLDS(attributes=c("ensembl_gene_id"), filters="ensembl_gene_id",
+        values=martdf,
+        mart=zebrafish,attributesL=c("hgnc_symbol",
+                                 "ensembl_gene_id"), martL=human)
+
+colnames(ortho_df)<-c("ENSEMBL", "Gene", "Hu_ENSEMBL")
+tf_df<-merge(ortho_df, tf_df, by="ENSEMBL")
+
+tf_df<-tf_df[,c(3, 5, 6)]
+colnames(tf_df)<-c("Genes", "log2FoldChange", "pvalue")
+tf_df <- tf_df[order(-tf_df$log2FoldChange),] 
+tf_table<-preprocessInputData(tf_df)
+
+
+Genes.Dwreg <- Select_genes(tf_table,max_LFC = -1.5)
+Genes.Upreg <- Select_genes(tf_table,min_LFC = 1.5)
+Genes.Control <- Select_genes(tf_table, min_pval = 0.5, max_pval = 1, min_LFC = -0.25, max_LFC = 0.25)
+CM_list_UP <- contingency_matrix(Genes.Upreg,Genes.Control)
+pval_mat_UP <- getCMstats(CM_list_UP)
+head(pval_mat_UP)
+
+CM_list_Dw <- contingency_matrix(Genes.Dwreg,Genes.Control)
+pval_mat_Dw <- getCMstats(CM_list_Dw)
+head(pval_mat_Dw)
+
+plot_CM(pval_mat_UP)
+plot_CM(pval_mat_Dw)
+
+
+pval_up_df <- mutate(pval_mat_UP, Sig=ifelse(pval_mat_UP$adj.p.value<0.01, "Sig", "Not Sig"))
+pval_up_df <- na.omit(pval_up_df)
+pval_up_df$Sig <- as.factor(as.character(pval_up_df$Sig))
+```
+
+```{r plot tf}
+data_fg<-subset(pval_up_df, Sig == "Sig")
+
+tfvolc = ggplot(pval_up_df, aes(log2.OR, log10.adj.pVal)) + geom_point(color = "grey", alpha = 0.3)+ ggtitle("Transcription Factor Enrichment") + theme_bw() +xlab("log 2 Odds Ratio")+ ylab("-log10 p value")+scale_y_sqrt()
+
+tfvolc+geom_point(data = data_fg, aes(colour = distance))+ scale_fill_viridis()+ geom_text_repel(data=head(subset(pval_mat_UP, adj.p.value<0.01), 40), aes(label=TF), size = 3, box.padding = unit(0.35, "lines"),point.padding = unit(0.3, "lines"))
+```
+
+```{r chea3 dataset}
+tfdf_up<-subset(tf_df, log2FoldChange>1.5 & pvalue<0.05)
+ids_tfup<- bitr(tfdf_up$Genes, fromType="ENSEMBL", toType="SYMBOL", OrgDb="org.Hs.eg.db", drop = FALSE)
+write.csv(ids_tfup, "tfdf_up.csv")
+
+tfdf_dw<-subset(tf_df, log2FoldChange<1.5 & pvalue<0.05)
+ids_tfdw<- bitr(tfdf_dw$Genes, fromType="ENSEMBL", toType="SYMBOL", OrgDb="org.Hs.eg.db", drop = FALSE)
+write.csv(ids_tfdw, "tfdf_dw.csv")
+
+#output is analyzed with chEA3
+```
