@@ -1,0 +1,21 @@
+# building an index
+cd c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\bowtie2-2.2.9\
+bowtie2-build c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\tet2_reference.fa c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\index\tet2_index
+
+# combining paired end reads
+cd c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\New_data\
+
+c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\FLASH\flash.exe VR01-VR1_R1_001.fastq VR01-VR1_R2_001.fastq -o tet2_sgR1 -M 100
+c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\FLASH\flash.exe VR02-VR2_R1_001.fastq VR02-VR2_R2_001.fastq -o tet2_sgR2 -M 100
+c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\FLASH\flash.exe VR03-VR3_R1_001.fastq VR03-VR3_R2_001.fastq -o tet2_sgR3 -M 100
+c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\FLASH\flash.exe VR04-VR4_R1_001.fastq VR04-VR4_R2_001.fastq -o wt_full -M 100
+
+
+# bowtie2 alignments
+
+cd 	c:\00_Berman_lab_project\side_projects\tet2-mutant\tet2_human_sgRNAs\index\
+
+bowtie2 -x tet2_index -U ..\New_data\fullreads\tet2_sgR1.extendedFrags.fastq -S ..\New_data\tet2_sgR1.sam
+bowtie2 -x tet2_index -U ..\New_data\fullreads\tet2_sgR2.extendedFrags.fastq -S ..\New_data\tet2_sgR2.sam
+bowtie2 -x tet2_index -U ..\New_data\fullreads\tet2_sgR3.extendedFrags.fastq -S ..\New_data\tet2_sgR3.sam
+bowtie2 -x tet2_index -U ..\New_data\fullreads\wt_full.extendedFrags.fastq -S ..\New_data\wt_full.sam
