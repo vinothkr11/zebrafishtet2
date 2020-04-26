@@ -1,0 +1,137 @@
+---
+title: "meDIP and hmeDIP analysis Nov 2019"
+author: "Vinothkumar Rajan"
+date: '2019-11-21'
+output: html_document
+---
+Calling required libraries and downloading relevant genomic data
+
+```{r setup, include=FALSE}
+library(DiffBind)
+library(ggplot2)
+library(ggsci)
+library(RMariaDB)
+library(GenomicFeatures)
+library(ChIPpeakAnno)
+library(BSgenome.Drerio.UCSC.danRer10)
+library(tidyr)
+setwd("~/Desktop/MPU/Tet2 Project/MACS2_noControl/MACS2 xls output")
+txdb <- makeTxDbFromUCSC("danRer10", "ensGene")
+```
+
+Inputing sample sheet
+```{r input samples}
+dbme <- read.csv('samplesheet_methylation.csv')
+head(dbme)
+dbhme <-read.csv('samplesheet_hydroxymethylation.csv')
+head(dbhme)
+```
+
+Performing statistics using both DESEQ2 and EDGER for methylation peaks
+```{r methylation analysis}
+medb <- dba(sampleSheet=dbme)
+medb <- dba.count(medb, bUseSummarizeOverlaps=FALSE)
+medb <- dba.contrast(medb, categories=DBA_FACTOR, minMembers = 2)
+medb <- dba.analyze(medb, method=DBA_ALL_METHODS)
+dba.show(medb, bContrasts=T)
+```
+
+Ploting volcano plot and heatmap using
+```{r deseq}
+res_deseq <- dba.report(medb, method=DBA_DESEQ2, contrast = 1, th=1)
+dba.plotVolcano(medb, method=DBA_DESEQ2, contrast = 1, th=0.01)
+dba.plotHeatmap(medb, contrast=1, correlations=FALSE)
+```
+Annotating methylation data to different genomic features
+```{r annotation}
+mg<-subset(res_deseq, FDR<0.05 & Fold>=0.2)
+ml<-subset(res_deseq, FDR<0.05 & Fold<=-0.2)
+
+aCR_mt<-assignChromosomeRegion(res_deseq, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+
+aCR_mg<-assignChromosomeRegion(mg, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+
+aCR_ml<-assignChromosomeRegion(ml, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+```
+
+
+```{r hydroxymethylation analysis}
+hmedb <- dba(sampleSheet=dbhme)
+hmedb <- dba.count(hmedb, bUseSummarizeOverlaps=FALSE)
+hmedb <- dba.contrast(hmedb, categories=DBA_FACTOR, minMembers = 2)
+hmedb <- dba.analyze(hmedb, method=DBA_ALL_METHODS)
+dba.show(hmedb, bContrasts=T)
+```
+
+```{r hydroxymethylation plots}
+res_hdeseq <- dba.report(hmedb, method=DBA_DESEQ2, contrast = 1, th=1)
+dba.plotVolcano(hmedb, method=DBA_DESEQ2, contrast = 1, th=0.01)
+dba.plotHeatmap(hmedb, contrast=1, correlations=FALSE)
+```
+
+```{r hydroxymethylation annotation}
+hmg<-subset(res_hdeseq, FDR<0.05 & Fold>=0.2)
+hml<-subset(res_hdeseq, FDR<0.05 & Fold<=-0.2)
+
+aCR_hmt<-assignChromosomeRegion(res_hdeseq, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+
+aCR_hmg<-assignChromosomeRegion(hmg, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+
+aCR_hml<-assignChromosomeRegion(hml, nucleotideLevel=FALSE, 
+                         precedence=c("Promoters", "immediateDownstream", 
+                                         "fiveUTRs", "threeUTRs", 
+                                         "Exons", "Introns"), TxDb=txdb)
+```
+
+```{r compiling a dataframe from annotation results}
+total<-rbind(aCR_hmt$percentage, aCR_hmg$percentage)
+total<-rbind(total, aCR_hml$percentage)
+total<-rbind(total, aCR_mt$percentage)
+total<-rbind(total, aCR_mg$percentage)
+total<-rbind(total, aCR_ml$percentage)
+total<-as.data.frame(as.matrix(total))
+total$Method<-c("Hydroxymethylation", "Hydroxymethylation", "Hydroxymethylation", "Methylation", "Methylation", "Methylation")
+total$Sample<-c("All probes", "Significant gain", "Significant loss","All probes", "Significant gain", "Significant loss")
+```
+
+Plotting Genomic Features data
+```{r data manipulation for plot}
+plot_df<-gather(total, Loci, Percentage, Promoters:Intergenic.Region)
+plot_df$Method= factor(plot_df$Method, levels=c('Methylation','Hydroxymethylation'))
+plot_df$Sample= factor(plot_df$Sample, levels=c("All probes", "Significant gain", "Significant loss"))
+plot_df$Loci= factor(plot_df$Loci, levels = c("Promoters", "immediateDownstream", "fiveUTRs", "threeUTRs", "Exons", "Introns", "Intergenic.Region"))
+newlabs <- c("Promoters", "TSS<=1000", "5'UTRs", "3'UTRs", "Exons", "Introns", "IGR")
+r<-ggplot(data=plot_df, aes(x=Loci, y=Percentage, fill = Sample)) + geom_bar(stat="identity", position=position_dodge(0.7), width = 0.7) + facet_grid(Method~.) + xlab("") + ylab("Genomic Features (%)") + theme_bw(base_size = 22) + theme ()+scale_x_discrete(labels= newlabs)
+r+theme(legend.position = c(0.35, 0.85), legend.title = element_blank())+theme(legend.background = element_rect(size=0.1, linetype="solid", colour ="black"))+scale_fill_manual(values=c("#999999","#3B499BFF", "#EE0000FF"))
+```
+
+Extracting peak sequence for RSAT analysis
+```{r sequence extraction}
+seq_hml<-getAllPeakSequence(hml, genome = Drerio)
+seq_hmctrl<-getAllPeakSequence(hmg, genome = Drerio)
+seq_mctrl<-getAllPeakSequence(ml, genome = Drerio)
+seq_mg<-getAllPeakSequence(mg, genome = Drerio)
+```
+
+Step wise guidelines to use RSAT for the TF binding analysis
+#1. Go to the RSAT(Medina-Rivera et al. 2015; M. Thomas-Chollier et al. 2012) website http://teaching.rsat.eu/.
+#2. Select NGS - ChIP-seq on the left site and choose the peak-motifs tool.
+#3. Upload the peak sequence and control sequence from the above extraction
+#4. Under motif discovery paramters select only Discover over-represented words.
+Compare discovered motifs with databases (against Jaspar and CisBP_danio).
+#5. Submit the enquiry
