@@ -1,0 +1,86 @@
+---
+title: "Insitu data analysis"
+author: "Vinothkumar Rajan"
+date: '2018-01-08'
+output: html_document
+---
+
+```{r insitu}
+library(ggplot2)
+library(ggsci)
+setwd("~/Desktop/MPU/Tet2 Project/tet2 insitu")
+db<-read.csv("insitu scoring.csv")
+summary(db)
+```
+
+## R Markdown
+
+
+```{r t-test}
+db_lcp1= subset(db, Stain == "lcp1")
+pvalue_lcp1<- t.test(No.cells ~ Strain, data = db_lcp1)$p.value
+
+db_mpx28= subset(db, Stain == "mpx" & Time == "28 hpf")
+pvalue_mpx28<- t.test(No.cells ~ Strain, data = db_mpx28)$p.value
+
+db_mpx48= subset(db, Stain == "mpx" & Time == "48 hpf")
+pvalue_mpx48<- t.test(No.cells ~ Strain, data = db_mpx48)$p.value
+
+db_runx1= subset(db, Stain == "runx1/cmyb")
+pvalue_runx1<- t.test(No.cells ~ Strain, data = db_runx1)$p.value
+
+db_pu.1_24= subset(db, Stain == "pu.1" & Time == "24 hpf")
+pvalue_pu.1_24<- t.test(No.cells ~ Strain, data = db_pu.1_24)$p.value
+
+db_pu.1_36= subset(db, Stain == "pu.1" & Time == "36 hpf")
+pvalue_pu.1_36<- t.test(No.cells ~ Strain, data = db_pu.1_36)$p.value
+
+pvalue_lcp1
+pvalue_mpx48
+pvalue_mpx28
+pvalue_runx1
+pvalue_pu.1_24
+pvalue_pu.1_36
+
+```
+
+
+```{r}
+ymax= max(db$No.cells)*1.05
+ymax
+
+db_text <- data.frame(y = ymax+ 2, x = 1.5, label = c("", "p=0.01", "ns", "p<0.001"), Stain = c("lcp1", "mpx", "runx1/cmyb", "pu.1"))
+
+
+
+db_text
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r plot}
+db_24
+db_28
+
+p <- ggplot(db, aes(Strain, No.cells, colour = Strain, guides(fill=FALSE)))+ scale_color_aaas() + geom_boxplot() + geom_jitter(width = 0.2)+ facet_grid(Time ~ Stain, scales ="free")+ theme_bw() + xlab("")+ ylab("No of labelled cells per embryo")+theme(legend.position="none")+geom_segment(aes(x = 1, y = ymax, xend = 2, yend = ymax))+geom_segment(aes(x = 1, y = ymax-2, xend = 1, yend = ymax))+geom_segment(aes(x = 2, y = ymax-2, xend = 2, yend = ymax))+ scale_x_discrete(limits=c("tet2 wt/wt", "tet2 -/-"))
+
+
+plot(p)
+
+q <- ggplot(db, aes(Strain, No.cells, colour = Strain, guides(fill=FALSE)))+ scale_color_aaas() + geom_boxplot() + geom_jitter(width = 0.2)+ facet_grid(Time ~ Stain, scales ="free")+ theme_bw() + xlab("")+ ylab("No of labelled cells per embryo")+theme(legend.position="none")+geom_segment(aes(x = 1, y = ymax, xend = 2, yend = ymax))+geom_segment(aes(x = 1, y = ymax-2, xend = 1, yend = ymax))+geom_segment(aes(x = 2, y = ymax-2, xend = 2, yend = ymax))+ scale_x_discrete(limits=c("tet2 wt/wt", "tet2 -/-"))
+
+
+plot(q)
+
+r <- ggplot(db, aes(Strain, No.cells, colour = Strain, guides(fill=FALSE)))+ scale_color_aaas() + geom_boxplot() + geom_jitter(width = 0.2)+ facet_grid(Time ~ Stain, scales ="free")+ theme_bw() + xlab("")+ ylab("No of labelled cells per embryo")+theme(legend.position="none")+geom_segment(aes(x = 1, y = ymax, xend = 2, yend = ymax))+geom_segment(aes(x = 1, y = ymax-2, xend = 1, yend = ymax))+geom_segment(aes(x = 2, y = ymax-2, xend = 2, yend = ymax))+ scale_x_discrete(limits=c("tet2 wt/wt", "tet2 -/-"))
+
+
+plot(r)
+```
+
+```{r}
+ggsave("tet2_insitu.tiff", width =5, height=5, dpi=300)
+```
+
